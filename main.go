@@ -30,8 +30,6 @@ func main() {
 
 	log.Println("Server running on :8081")
 	http.ListenAndServe(":8081", mux)
-
-	log.Println("Successfully fetched JWKs from", jwksURL)
 }
 
 func listPatches(w http.ResponseWriter, r *http.Request) {
