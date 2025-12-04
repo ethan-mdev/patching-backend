@@ -3,24 +3,42 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/ethan-mdev/central-auth/middleware"
 )
 
 func main() {
 	// JWKs URL
 	jwksURL := "http://localhost:8080/.well-known/jwks.json"
 
-	// JWKs cache
-	cache := jwk.NewCache(context.Background())
-	cache.Register(jwksURL, jwk.WithMinRefreshInterval(15*time.Minute))
+	ctx := context.Background()
 
-	// Fetch JWKs
-	_, err := cache.Refresh(context.Background(), jwksURL)
+	auth, err := middleware.NewJWKSAuth(ctx, jwksURL, 15*time.Minute)
 	if err != nil {
-		log.Fatalf("failed to fetch JWKs: %v", err)
+		log.Fatalf("failed to create JWKSAuth: %v", err)
 	}
 
+	mux := http.NewServeMux()
+
+	// Protected routes using JWKS verification
+	mux.Handle("GET /patches", auth.Auth(http.HandlerFunc(listPatches)))
+
+	// With role check
+	mux.Handle("POST /patches", auth.Auth(middleware.RequireRole("admin")(http.HandlerFunc(createPatch))))
+
+	log.Println("Server running on :8081")
+	http.ListenAndServe(":8081", mux)
+
 	log.Println("Successfully fetched JWKs from", jwksURL)
+}
+
+func listPatches(w http.ResponseWriter, r *http.Request) {
+	claims, _ := middleware.GetClaims(r.Context())
+	w.Write([]byte("Hello, " + claims.Username))
+}
+
+func createPatch(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Patch created"))
 }
