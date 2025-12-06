@@ -4,88 +4,70 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/ethan-mdev/patching-backend/internal/integrity"
 )
 
 type Manifest struct {
-	Version string
-	Files   []FileHash
+	Version string     `json:"version"`
+	Files   []FileHash `json:"files"`
 }
 
 type FileHash struct {
-	FileName  string
-	Directory string
-	Hash      string
+	FileName  string `json:"fileName"`
+	Directory string `json:"directory"`
+	Hash      string `json:"hash"`
 }
 
-const manifestCachePath = "./manifest.json"
+// LoadManifest loads a manifest from the given directory, or creates one if it doesn't exist.
+func LoadManifest(dir string) (*Manifest, error) {
+	manifestPath := filepath.Join(dir, "manifest.json")
 
-func NewManifest() *Manifest {
-	return &Manifest{
-		Version: "",
-		Files:   []FileHash{},
-	}
-}
-
-func LoadManifest() (*Manifest, error) {
-	cached, err := loadFromFile(manifestCachePath)
+	cached, err := loadFromFile(manifestPath)
 	if err == nil {
 		return cached, nil
 	}
 
-	m, err := GenerateManifest("1.0.0", "./files")
+	m, err := GenerateManifest("1.0.0", dir)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := m.saveToFile(manifestCachePath); err != nil {
+	if err := saveToFile(manifestPath, m); err != nil {
 		return nil, err
 	}
 
 	return m, nil
 }
 
-func GenerateManifest(version string, filepath string) (*Manifest, error) {
-	m := NewManifest()
-	m.SetVersion(version)
+func GenerateManifest(version string, dir string) (*Manifest, error) {
+	m := &Manifest{
+		Version: version,
+		Files:   []FileHash{},
+	}
 
-	files, err := os.ReadDir(filepath)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read directory: %v", err)
 	}
 
 	for _, file := range files {
 		if !file.IsDir() {
-			hash, err := integrity.ComputeFileHash(fmt.Sprintf("%s/%s", filepath, file.Name()))
+			filePath := filepath.Join(dir, file.Name())
+			hash, err := integrity.ComputeFileHash(filePath)
 			if err != nil {
 				return nil, fmt.Errorf("unable to compute hash for file %s: %v", file.Name(), err)
 			}
-			m.AddFile(file.Name(), filepath, hash)
+			m.Files = append(m.Files, FileHash{
+				FileName:  file.Name(),
+				Directory: dir,
+				Hash:      hash,
+			})
 		}
 	}
 
 	return m, nil
-}
-
-func (m *Manifest) SetVersion(version string) {
-	m.Version = version
-}
-
-func (m *Manifest) GetVersion() string {
-	return m.Version
-}
-
-func (m *Manifest) AddFile(file string, directory string, hash string) {
-	m.Files = append(m.Files, FileHash{
-		FileName:  file,
-		Directory: directory,
-		Hash:      hash,
-	})
-}
-
-func (m *Manifest) GetFiles() []FileHash {
-	return m.Files
 }
 
 func loadFromFile(path string) (*Manifest, error) {
@@ -100,10 +82,16 @@ func loadFromFile(path string) (*Manifest, error) {
 	return &manifest, nil
 }
 
-func (m *Manifest) saveToFile(path string) error {
+func saveToFile(path string, m *Manifest) error {
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// Save writes the manifest to the given directory as manifest.json
+func (m *Manifest) Save(dir string) error {
+	manifestPath := filepath.Join(dir, "manifest.json")
+	return saveToFile(manifestPath, m)
 }
