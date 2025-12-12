@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -25,6 +24,15 @@ func NewPatchHandler(m *manifest.Manifest, filesRoot string) *PatchHandler {
 
 func (h *PatchHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=300") // Cache for 5 minutes
+	w.Header().Set("ETag", h.Manifest.Version)
+
+	// Check if client has current version
+	if match := r.Header.Get("If-None-Match"); match == h.Manifest.Version {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	if err := json.NewEncoder(w).Encode(h.Manifest); err != nil {
 		log.Printf("Error encoding manifest: %v", err)
 		http.Error(w, "Failed to encode manifest", http.StatusInternalServerError)
@@ -59,47 +67,6 @@ func (h *PatchHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fullPath)
 }
 
-func (h *PatchHandler) DownloadBatch(w http.ResponseWriter, r *http.Request) {
-	files := r.URL.Query()["files"]
-	if len(files) == 0 {
-		http.Error(w, "No files specified", http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"patch.zip\"")
-
-	zipWriter := zip.NewWriter(w)
-	defer zipWriter.Close()
-
-	for _, file := range files {
-		fullPath := filepath.Join(h.FilesRoot, filepath.Clean(file))
-
-		// Security: prevent directory traversal
-		if !filepath.HasPrefix(fullPath, h.FilesRoot) {
-			log.Printf("Attempted directory traversal in batch: %s", file)
-			continue
-		}
-
-		data, err := os.ReadFile(fullPath)
-		if err != nil {
-			log.Printf("Error reading file %s: %v", file, err)
-			continue
-		}
-
-		writer, err := zipWriter.Create(file)
-		if err != nil {
-			log.Printf("Error creating zip entry for %s: %v", file, err)
-			continue
-		}
-
-		if _, err := writer.Write(data); err != nil {
-			log.Printf("Error writing file %s to zip: %v", file, err)
-			continue
-		}
-	}
-}
-
 func (h *PatchHandler) CreatePatch(w http.ResponseWriter, r *http.Request) {
 	version := r.PathValue("version")
 	if version == "" {
@@ -119,5 +86,53 @@ func (h *PatchHandler) CreatePatch(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Patch created successfully",
 		"version": version,
+	})
+}
+
+// VerifyFiles checks if client's file hashes match the server manifest
+// Used for "Repair Game Files" functionality
+func (h *PatchHandler) VerifyFiles(w http.ResponseWriter, r *http.Request) {
+	var clientFiles map[string]string // fileName -> hash
+	if err := json.NewDecoder(r.Body).Decode(&clientFiles); err != nil {
+		log.Printf("Error decoding verify request: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	mismatches := []string{}
+
+	// Check each client file against manifest
+	for fileName, clientHash := range clientFiles {
+		found := false
+		for _, serverFile := range h.Manifest.Files {
+			if serverFile.FileName == fileName {
+				found = true
+				if serverFile.Hash != clientHash {
+					mismatches = append(mismatches, fileName)
+					log.Printf("Hash mismatch for %s: client=%s server=%s",
+						fileName, clientHash, serverFile.Hash)
+				}
+				break
+			}
+		}
+
+		if !found {
+			log.Printf("Client has unknown file: %s", fileName)
+		}
+	}
+
+	// Check for missing files
+	missing := []string{}
+	for _, serverFile := range h.Manifest.Files {
+		if _, exists := clientFiles[serverFile.FileName]; !exists {
+			missing = append(missing, serverFile.FileName)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"valid":      len(mismatches) == 0 && len(missing) == 0,
+		"mismatches": mismatches,
+		"missing":    missing,
 	})
 }

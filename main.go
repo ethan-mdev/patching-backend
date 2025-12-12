@@ -50,7 +50,9 @@ func main() {
 	mux.Handle("GET /manifest", auth.Auth(http.HandlerFunc(h.GetManifest)))
 	mux.Handle("GET /version", auth.Auth(http.HandlerFunc(h.GetVersion)))
 	mux.Handle("GET /files/{path...}", auth.Auth(http.HandlerFunc(h.DownloadFile)))
-	mux.Handle("GET /files/batch", auth.Auth(http.HandlerFunc(h.DownloadBatch)))
+
+	// Optional debugging endpoint (not used in normal flow)
+	mux.Handle("POST /verify", auth.Auth(http.HandlerFunc(h.VerifyFiles)))
 
 	// Admin-only routes
 	mux.Handle("POST /patches/{version}",
@@ -61,9 +63,15 @@ func main() {
 		),
 	)
 
+	limiter := middleware.NewRateLimiter(10) // 10 requests per minute per IP
+
 	// Wrap with middleware
 	handler := middleware.Logging(
-		middleware.CORS(cfg.AllowedOrigins)(mux),
+		limiter.Middleware(
+			middleware.Compress(
+				middleware.CORS(cfg.AllowedOrigins)(mux),
+			),
+		),
 	)
 
 	// Setup server with graceful shutdown
