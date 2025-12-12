@@ -2,7 +2,10 @@ module github.com/ethan-mdev/patching-backend
 
 go 1.25.3
 
-require github.com/ethan-mdev/central-auth v0.0.0-20251202000513-bf5180d47699
+require (
+	github.com/ethan-mdev/central-auth v0.0.0-20251202000513-bf5180d47699
+	github.com/joho/godotenv v1.5.1
+)
 
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
