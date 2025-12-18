@@ -48,7 +48,6 @@ func main() {
 
 	// Protected routes using JWKS verification
 	mux.Handle("GET /manifest", auth.Auth(http.HandlerFunc(h.GetManifest)))
-	mux.Handle("GET /version", auth.Auth(http.HandlerFunc(h.GetVersion)))
 	mux.Handle("GET /files/{path...}", auth.Auth(http.HandlerFunc(h.DownloadFile)))
 
 	// Optional debugging endpoint (not used in normal flow)

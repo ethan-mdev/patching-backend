@@ -40,19 +40,13 @@ func (h *PatchHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *PatchHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"version": h.Manifest.Version,
-	})
-}
-
 func (h *PatchHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	filePath := r.PathValue("path")
 	fullPath := filepath.Join(h.FilesRoot, filepath.Clean(filePath))
 
 	// Security: prevent directory traversal
-	if !filepath.HasPrefix(fullPath, h.FilesRoot) {
+	relPath, err := filepath.Rel(h.FilesRoot, fullPath)
+	if err != nil || relPath == ".." || len(relPath) > 2 && relPath[:3] == ".."+string(filepath.Separator) {
 		log.Printf("Attempted directory traversal: %s", filePath)
 		http.Error(w, "Invalid file path", http.StatusBadRequest)
 		return
@@ -76,8 +70,8 @@ func (h *PatchHandler) CreatePatch(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Creating patch for version: %s", version)
 
-	// TODO: Implement patch creation logic
 	// 1. Scan files directory
+
 	// 2. Calculate hashes
 	// 3. Update manifest
 	// 4. Save manifest
