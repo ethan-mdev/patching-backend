@@ -53,15 +53,16 @@ func GenerateManifest(version string, dir string) (*Manifest, error) {
 	}
 
 	for _, file := range files {
-		if !file.IsDir() {
+		if !file.IsDir() && file.Name() != "manifest.json" {
 			filePath := filepath.Join(dir, file.Name())
 			hash, err := integrity.ComputeFileHash(filePath)
 			if err != nil {
 				return nil, fmt.Errorf("unable to compute hash for file %s: %v", file.Name(), err)
 			}
+			// Directory is relative to game root, not the server's files folder
 			m.Files = append(m.Files, FileHash{
 				FileName:  file.Name(),
-				Directory: dir,
+				Directory: "./",
 				Hash:      hash,
 			})
 		}

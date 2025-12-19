@@ -22,7 +22,7 @@ func main() {
 	log.Printf("Starting patching server in %s mode", cfg.Environment)
 
 	// Load manifest
-	m, err := manifest.LoadManifest(".")
+	m, err := manifest.LoadManifest("./files")
 	if err != nil {
 		log.Fatalf("failed to load manifest: %v", err)
 	}
