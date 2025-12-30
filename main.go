@@ -62,14 +62,10 @@ func main() {
 		),
 	)
 
-	limiter := middleware.NewRateLimiter(10) // 10 requests per minute per IP
-
 	// Wrap with middleware
 	handler := middleware.Logging(
-		limiter.Middleware(
-			middleware.Compress(
-				middleware.CORS(cfg.AllowedOrigins)(mux),
-			),
+		middleware.Compress(
+			middleware.CORS(cfg.AllowedOrigins)(mux),
 		),
 	)
 
