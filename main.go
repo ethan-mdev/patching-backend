@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,20 +13,24 @@ import (
 	"github.com/ethan-mdev/patching-backend/internal/config"
 	"github.com/ethan-mdev/patching-backend/internal/handlers"
 	"github.com/ethan-mdev/patching-backend/internal/manifest"
-	"github.com/ethan-mdev/patching-backend/internal/middleware"
 )
 
 func main() {
+	// Setup logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	// Load configuration
 	cfg := config.Load()
-	log.Printf("Starting patching server in %s mode", cfg.Environment)
+	slog.Info("starting patching server")
 
 	// Load manifest
 	m, err := manifest.LoadManifest("./files")
 	if err != nil {
-		log.Fatalf("failed to load manifest: %v", err)
+		slog.Error("failed to load manifest", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Loaded manifest version: %s with %d files", m.Version, len(m.Files))
+	slog.Info("loaded manifest", "version", m.Version, "files", len(m.Files))
 
 	h := handlers.NewPatchHandler(m, cfg.FilesDir)
 
@@ -34,9 +38,10 @@ func main() {
 	ctx := context.Background()
 	auth, err := authmiddleware.NewJWKSAuth(ctx, cfg.JWKSUrl, cfg.JWKSRefresh)
 	if err != nil {
-		log.Fatalf("failed to create JWKSAuth: %v", err)
+		slog.Error("failed to create JWKSAuth", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("JWKS authentication configured with URL: %s", cfg.JWKSUrl)
+	slog.Info("JWKS authentication configured", "url", cfg.JWKSUrl)
 
 	// Setup router
 	mux := http.NewServeMux()
@@ -47,13 +52,13 @@ func main() {
 	})
 
 	// Protected routes using JWKS verification
-	mux.Handle("GET /manifest", auth.Auth(http.HandlerFunc(h.GetManifest)))
+	mux.HandleFunc("GET /manifest", h.GetManifest)
 	mux.Handle("GET /files/{path...}", auth.Auth(http.HandlerFunc(h.DownloadFile)))
 
 	// Optional debugging endpoint (not used in normal flow)
 	mux.Handle("POST /verify", auth.Auth(http.HandlerFunc(h.VerifyFiles)))
 
-	// Admin-only routes
+	// Admin-only routes (called via CLI or server-to-server)
 	mux.Handle("POST /patches/{version}",
 		auth.Auth(
 			authmiddleware.RequireRole("admin")(
@@ -62,17 +67,10 @@ func main() {
 		),
 	)
 
-	// Wrap with middleware
-	handler := middleware.Logging(
-		middleware.Compress(
-			middleware.CORS(cfg.AllowedOrigins)(mux),
-		),
-	)
-
 	// Setup server with graceful shutdown
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      handler,
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -80,9 +78,10 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Printf("Server running on :%s", cfg.Port)
+		slog.Info("server running", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed to start: %v", err)
+			slog.Error("server failed to start", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -91,15 +90,16 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	slog.Info("shutting down server...")
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("server forced to shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Server exited")
+	slog.Info("server exited")
 }

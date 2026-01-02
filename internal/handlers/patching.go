@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,7 +34,7 @@ func (h *PatchHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(h.Manifest); err != nil {
-		log.Printf("Error encoding manifest: %v", err)
+		slog.Error("failed to encode manifest", "error", err)
 		http.Error(w, "Failed to encode manifest", http.StatusInternalServerError)
 		return
 	}
@@ -47,13 +47,13 @@ func (h *PatchHandler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	// Security: prevent directory traversal
 	relPath, err := filepath.Rel(h.FilesRoot, fullPath)
 	if err != nil || relPath == ".." || len(relPath) > 2 && relPath[:3] == ".."+string(filepath.Separator) {
-		log.Printf("Attempted directory traversal: %s", filePath)
+		slog.Warn("attempted directory traversal", "path", filePath)
 		http.Error(w, "Invalid file path", http.StatusBadRequest)
 		return
 	}
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		log.Printf("File not found: %s", fullPath)
+		slog.Debug("file not found", "path", fullPath)
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
@@ -68,7 +68,7 @@ func (h *PatchHandler) CreatePatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Creating patch for version: %s", version)
+	slog.Info("creating patch", "version", version)
 
 	// 1. Scan files directory
 
@@ -88,7 +88,7 @@ func (h *PatchHandler) CreatePatch(w http.ResponseWriter, r *http.Request) {
 func (h *PatchHandler) VerifyFiles(w http.ResponseWriter, r *http.Request) {
 	var clientFiles map[string]string // fileName -> hash
 	if err := json.NewDecoder(r.Body).Decode(&clientFiles); err != nil {
-		log.Printf("Error decoding verify request: %v", err)
+		slog.Error("failed to decode verify request", "error", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -103,15 +103,14 @@ func (h *PatchHandler) VerifyFiles(w http.ResponseWriter, r *http.Request) {
 				found = true
 				if serverFile.Hash != clientHash {
 					mismatches = append(mismatches, fileName)
-					log.Printf("Hash mismatch for %s: client=%s server=%s",
-						fileName, clientHash, serverFile.Hash)
+					slog.Debug("hash mismatch", "file", fileName, "client", clientHash, "server", serverFile.Hash)
 				}
 				break
 			}
 		}
 
 		if !found {
-			log.Printf("Client has unknown file: %s", fileName)
+			slog.Debug("client has unknown file", "file", fileName)
 		}
 	}
 

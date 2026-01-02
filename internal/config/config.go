@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -10,35 +10,24 @@ import (
 )
 
 type Config struct {
-	FilesDir       string
-	Port           string
-	JWKSUrl        string
-	JWKSRefresh    time.Duration
-	AllowedOrigins string
-	Environment    string
+	FilesDir    string
+	Port        string
+	JWKSUrl     string
+	JWKSRefresh time.Duration
 }
 
 func Load() *Config {
 	// Load .env file if it exists
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables")
+		slog.Debug("No .env file found")
 	}
 
 	return &Config{
-		FilesDir:       getEnv("FILES_DIR", "./files"),
-		Port:           getEnv("PORT", "8081"),
-		JWKSUrl:        getEnv("JWKS_URL", "http://localhost:8080/.well-known/jwks.json"),
-		JWKSRefresh:    getDurationEnv("JWKS_REFRESH_MINUTES", 15) * time.Minute,
-		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "*"),
-		Environment:    getEnv("ENVIRONMENT", "development"),
+		FilesDir:    os.Getenv("FILES_DIR"),
+		Port:        os.Getenv("PORT"),
+		JWKSUrl:     os.Getenv("JWKS_URL"),
+		JWKSRefresh: getDurationEnv("JWKS_REFRESH_MINUTES", 5) * time.Minute,
 	}
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
 
 func getDurationEnv(key string, defaultValue int) time.Duration {
