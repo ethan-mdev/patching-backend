@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"time"
 
@@ -16,18 +15,16 @@ type Config struct {
 	JWKSRefresh time.Duration
 }
 
-func Load() *Config {
-	// Load .env file if it exists
-	if err := godotenv.Load(); err != nil {
-		slog.Debug("No .env file found")
-	}
+func Load() (*Config, error) {
+	// Load .env file
+	godotenv.Load()
 
 	return &Config{
 		FilesDir:    os.Getenv("FILES_DIR"),
 		Port:        os.Getenv("PORT"),
 		JWKSUrl:     os.Getenv("JWKS_URL"),
 		JWKSRefresh: getDurationEnv("JWKS_REFRESH_MINUTES", 5) * time.Minute,
-	}
+	}, nil
 }
 
 func getDurationEnv(key string, defaultValue int) time.Duration {

@@ -71,7 +71,6 @@ func (h *PatchHandler) CreatePatch(w http.ResponseWriter, r *http.Request) {
 	slog.Info("creating patch", "version", version)
 
 	// 1. Scan files directory
-
 	// 2. Calculate hashes
 	// 3. Update manifest
 	// 4. Save manifest

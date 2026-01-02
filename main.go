@@ -21,7 +21,11 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Load configuration
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("failed to load environment variables", "error", err)
+		os.Exit(1)
+	}
 	slog.Info("starting patching server")
 
 	// Load manifest
